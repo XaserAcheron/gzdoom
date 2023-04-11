@@ -228,6 +228,12 @@ private:
 			double            bottom;
 
 			auto tex = TexMan.GetGameTexture(c[i]);
+			if (!tex)
+			{
+				// skip this if the texture is missing from the wad
+				continue;
+			}
+
 			right = tex->GetDisplayWidth();
 			bottom = tex->GetDisplayHeight();
 			left = lnodes[n].x - tex->GetDisplayLeftOffset();
