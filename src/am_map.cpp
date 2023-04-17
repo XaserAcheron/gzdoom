@@ -131,6 +131,7 @@ struct islope_t
 //=============================================================================
 
 CVAR(Bool, am_textured, false, CVAR_ARCHIVE)
+CVAR(Bool, am_solid, false, CVAR_ARCHIVE)
 CVAR(Float, am_linealpha, 1.0f, CVAR_ARCHIVE)
 CVAR(Int, am_linethickness, 1, CVAR_ARCHIVE)
 CVAR(Int, am_lineantialiasing, 0, CVAR_ARCHIVE)
@@ -2044,117 +2045,140 @@ void DAutomap::drawSubsectors()
 			points[j].X = float(f_x + ((pt.x - m_x) * scale));
 			points[j].Y = float(f_y + (f_h - (pt.y - m_y) * scale));
 		}
-		// For lighting and texture determination
-		sector_t *sec = AM_FakeFlat(players[consoleplayer].camera, sub->render_sector, &tempsec);
-		floorlight = sec->GetFloorLight();
-		// Find texture origin.
-		originpt.x = -sec->GetXOffset(sector_t::floor);
-		originpt.y = sec->GetYOffset(sector_t::floor);
-		rotation = -sec->GetAngle(sector_t::floor);
-		// Coloring for the polygon
-		colormap = sec->Colormap;
 
-		FTextureID maptex = sec->GetTexture(sector_t::floor);
-		flatcolor = sec->SpecialColors[sector_t::floor];
+		FTextureID maptex;
 
-		scalex = sec->GetXScale(sector_t::floor);
-		scaley = sec->GetYScale(sector_t::floor);
-
-		if (sec->e->XFloor.ffloors.Size())
+		// Textured mode
+		if(am_textured)
 		{
-			secplane_t *floorplane = &sec->floorplane;
+			// For lighting and texture determination
+			sector_t* sec = AM_FakeFlat(players[consoleplayer].camera, sub->render_sector, &tempsec);
+			floorlight = sec->GetFloorLight();
+			// Find texture origin.
+			originpt.x = -sec->GetXOffset(sector_t::floor);
+			originpt.y = sec->GetYOffset(sector_t::floor);
+			rotation = -sec->GetAngle(sector_t::floor);
+			// Coloring for the polygon
+			colormap = sec->Colormap;
 
-			// Look for the highest floor below the camera viewpoint.
-			// Check the center of the subsector's sector. Do not check each
-			// subsector separately because that might result in different planes for
-			// different subsectors of the same sector which is not wanted here.
-			// (Make the comparison in floating point to avoid overflows and improve performance.)
-			double secx;
-			double secy;
-			double seczb, seczt;
-			auto &vp = r_viewpoint;
-			double cmpz = vp.Pos.Z;
+			maptex = sec->GetTexture(sector_t::floor);
+			flatcolor = sec->SpecialColors[sector_t::floor];
 
-			if (players[consoleplayer].camera && sec == players[consoleplayer].camera->Sector)
-			{
-				// For the actual camera sector use the current viewpoint as reference.
-				secx = vp.Pos.X;
-				secy = vp.Pos.Y;
-			}
-			else
-			{
-				secx = sec->centerspot.X;
-				secy = sec->centerspot.Y;
-			}
-			seczb = floorplane->ZatPoint(secx, secy);
-			seczt = sec->ceilingplane.ZatPoint(secx, secy);
+			scalex = sec->GetXScale(sector_t::floor);
+			scaley = sec->GetYScale(sector_t::floor);
 
-			for (unsigned int i = 0; i < sec->e->XFloor.ffloors.Size(); ++i)
+			if (sec->e->XFloor.ffloors.Size())
 			{
-				F3DFloor *rover = sec->e->XFloor.ffloors[i];
-				if (!(rover->flags & FF_EXISTS)) continue;
-				if (rover->flags & (FF_FOG | FF_THISINSIDE)) continue;
-				if (!(rover->flags & FF_RENDERPLANES)) continue;
-				if (rover->alpha == 0) continue;
-				double roverz = rover->top.plane->ZatPoint(secx, secy);
-				// Ignore 3D floors that are above or below the sector itself:
-				// they are hidden. Since 3D floors are sorted top to bottom,
-				// if we get below the sector floor, we can stop.
-				if (roverz > seczt) continue;
-				if (roverz < seczb) break;
-				if (roverz < cmpz)
+				secplane_t* floorplane = &sec->floorplane;
+
+				// Look for the highest floor below the camera viewpoint.
+				// Check the center of the subsector's sector. Do not check each
+				// subsector separately because that might result in different planes for
+				// different subsectors of the same sector which is not wanted here.
+				// (Make the comparison in floating point to avoid overflows and improve performance.)
+				double secx;
+				double secy;
+				double seczb, seczt;
+				auto& vp = r_viewpoint;
+				double cmpz = vp.Pos.Z;
+
+				if (players[consoleplayer].camera && sec == players[consoleplayer].camera->Sector)
 				{
-					maptex = *(rover->top.texture);
-					floorplane = rover->top.plane;
-					sector_t *model = rover->top.model;
-					int selector = (rover->flags & FF_INVERTPLANES) ? sector_t::floor : sector_t::ceiling;
-					flatcolor = model->SpecialColors[selector];
-					rotation = -model->GetAngle(selector);
-					scalex = model->GetXScale(selector);
-					scaley = model->GetYScale(selector);
-					originpt.x = -model->GetXOffset(selector);
-					originpt.y = model->GetYOffset(selector);
-					break;
+					// For the actual camera sector use the current viewpoint as reference.
+					secx = vp.Pos.X;
+					secy = vp.Pos.Y;
 				}
+				else
+				{
+					secx = sec->centerspot.X;
+					secy = sec->centerspot.Y;
+				}
+				seczb = floorplane->ZatPoint(secx, secy);
+				seczt = sec->ceilingplane.ZatPoint(secx, secy);
+
+				for (unsigned int i = 0; i < sec->e->XFloor.ffloors.Size(); ++i)
+				{
+					F3DFloor* rover = sec->e->XFloor.ffloors[i];
+					if (!(rover->flags & FF_EXISTS)) continue;
+					if (rover->flags & (FF_FOG | FF_THISINSIDE)) continue;
+					if (!(rover->flags & FF_RENDERPLANES)) continue;
+					if (rover->alpha == 0) continue;
+					double roverz = rover->top.plane->ZatPoint(secx, secy);
+					// Ignore 3D floors that are above or below the sector itself:
+					// they are hidden. Since 3D floors are sorted top to bottom,
+					// if we get below the sector floor, we can stop.
+					if (roverz > seczt) continue;
+					if (roverz < seczb) break;
+					if (roverz < cmpz)
+					{
+						maptex = *(rover->top.texture);
+						floorplane = rover->top.plane;
+						sector_t* model = rover->top.model;
+						int selector = (rover->flags & FF_INVERTPLANES) ? sector_t::floor : sector_t::ceiling;
+						flatcolor = model->SpecialColors[selector];
+						rotation = -model->GetAngle(selector);
+						scalex = model->GetXScale(selector);
+						scaley = model->GetYScale(selector);
+						originpt.x = -model->GetXOffset(selector);
+						originpt.y = model->GetYOffset(selector);
+						break;
+					}
+				}
+
+				lightlist_t* light = P_GetPlaneLight(sec, floorplane, false);
+				floorlight = *light->p_lightlevel;
+				colormap = light->extra_colormap;
+			}
+			if (maptex == skyflatnum)
+			{
+				continue;
 			}
 
-			lightlist_t *light = P_GetPlaneLight(sec, floorplane, false);
-			floorlight = *light->p_lightlevel;
-			colormap = light->extra_colormap;
-		}
-		if (maptex == skyflatnum)
-		{
-			continue;
-		}
+			// Apply the floor's rotation to the texture origin.
+			if (rotation != nullAngle)
+			{
+				rotate(&originpt.x, &originpt.y, rotation);
+			}
+			// Apply the automap's rotation to the texture origin.
+			if (am_rotate == 1 || (am_rotate == 2 && viewactive))
+			{
+				rotation = rotation + DAngle::fromDeg(90.) - players[consoleplayer].camera->InterpolatedAngles(r_viewpoint.TicFrac).Yaw;
+				rotatePoint(&originpt.x, &originpt.y);
+			}
+			originx = f_x + ((originpt.x - m_x) * scale);
+			originy = f_y + (f_h - (originpt.y - m_y) * scale);
 
-		// Apply the floor's rotation to the texture origin.
-		if (rotation != nullAngle)
-		{
-			rotate(&originpt.x, &originpt.y, rotation);
+			// If this subsector has not actually been seen yet (because you are cheating
+			// to see it on the map), tint and desaturate it.
+			if (!(sub->flags & SSECMF_DRAWN))
+			{
+				colormap.LightColor = PalEntry(
+					(colormap.LightColor.r + 255) / 2,
+					(colormap.LightColor.g + 200) / 2,
+					(colormap.LightColor.b + 160) / 2);
+				colormap.Desaturation = 255 - (255 - colormap.Desaturation) / 4;
+			}
+			// make table based fog visible on the automap as well.
+			if (Level->flags & LEVEL_HASFADETABLE)
+			{
+				colormap.FadeColor = PalEntry(0, 128, 128, 128);
+			}
 		}
-		// Apply the automap's rotation to the texture origin.
-		if (am_rotate == 1 || (am_rotate == 2 && viewactive))
+		else
 		{
-			rotation = rotation + DAngle::fromDeg(90.) - players[consoleplayer].camera->InterpolatedAngles(r_viewpoint.TicFrac).Yaw;
-			rotatePoint(&originpt.x, &originpt.y);
-		}
-		originx = f_x + ((originpt.x - m_x) * scale);
-		originy = f_y + (f_h - (originpt.y - m_y) * scale);
-
-		// If this subsector has not actually been seen yet (because you are cheating
-		// to see it on the map), tint and desaturate it.
-		if (!(sub->flags & SSECMF_DRAWN))
-		{
-			colormap.LightColor = PalEntry(
-				(colormap.LightColor.r + 255) / 2,
-				(colormap.LightColor.g + 200) / 2,
-				(colormap.LightColor.b + 160) / 2);
-			colormap.Desaturation = 255 - (255 - colormap.Desaturation) / 4;
-		}
-		// make table based fog visible on the automap as well.
-		if (Level->flags & LEVEL_HASFADETABLE)
-		{
-			colormap.FadeColor = PalEntry(0, 128, 128, 128);
+			// Solid mode
+			maptex = TexMan.GetSolidTexture();
+			// [XA] TODO: add a proper automap color and de-hardcode this
+			colormap.LightColor = PalEntry(40, 0, 0);
+			flatcolor = PalEntry(0, 0, 0); // unused??
+			floorlight = 255;
+			rotation = nullAngle;
+			scalex = 1.0;
+			scaley = 1.0;
+			originx = 0;
+			originy = 0;
+			originpt.x = 0;
+			originpt.y = 0;
 		}
 
 		// Draw the polygon.
@@ -3303,7 +3327,7 @@ void DAutomap::Drawer (int bottom)
 	}
 	activateNewScale();
 
-	if (am_textured && !viewactive)
+	if ((am_textured || am_solid) && !viewactive)
 		drawSubsectors();
 
 	if (am_showgrid)	
